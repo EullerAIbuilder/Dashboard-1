@@ -27,6 +27,7 @@ const ICONS = {
   file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
   tag: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/>',
   check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
   arrowUp: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
@@ -174,13 +175,14 @@ function buildRows(matrix) {
   });
 }
 
-function loadData(text, source) {
+// persist: 'save' grava o CSV no navegador; 'restored' indica que veio de lá
+function loadData(text, source, { persist, savedAt } = {}) {
   let rows;
   try {
     rows = buildRows(parseCSV(text));
   } catch (err) {
     toast(err.message, 'error');
-    return;
+    return false;
   }
   state.rows = rows;
   state.source = source;
@@ -200,7 +202,19 @@ function loadData(text, source) {
   $('#productBars').innerHTML = '';
   $('#clientBars').innerHTML = '';
   render();
-  toast(`${rows.length} registros carregados de ${source}`);
+
+  if (persist === 'save') {
+    const saved = saveDataset(text, source);
+    setSavedIndicator(saved ? Date.now() : null, true);
+    toast(`${rows.length} registros importados${saved ? ' e salvos no navegador' : ''}`);
+  } else if (persist === 'restored') {
+    setSavedIndicator(savedAt, true);
+    toast(`${rows.length} registros restaurados do navegador`);
+  } else {
+    setSavedIndicator(null, false);
+    toast(`${rows.length} registros carregados de ${source}`);
+  }
+  return true;
 }
 
 /* =========================================================
@@ -634,8 +648,37 @@ function toast(msg, type = 'ok') {
    ========================================================= */
 const storage = {
   get(k) { try { return localStorage.getItem(`dash:${k}`); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(`dash:${k}`, v); } catch { /* indisponível */ } },
+  set(k, v) { try { localStorage.setItem(`dash:${k}`, v); return true; } catch { return false; } },
+  remove(k) { try { localStorage.removeItem(`dash:${k}`); } catch { /* indisponível */ } },
 };
+
+/* =========================================================
+   Dados importados salvos no navegador
+   ========================================================= */
+const DATASET_KEY = 'dataset';
+
+function saveDataset(text, source) {
+  const ok = storage.set(DATASET_KEY, JSON.stringify({ source, savedAt: new Date().toISOString(), csv: text }));
+  if (!ok) toast('Não foi possível salvar no navegador (arquivo grande demais ou armazenamento bloqueado)', 'error');
+  return ok;
+}
+
+function loadSavedDataset() {
+  try {
+    const saved = JSON.parse(storage.get(DATASET_KEY));
+    return saved && typeof saved.csv === 'string' ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+// imported: dados vieram de um arquivo do usuário (mostra o botão "Limpar arquivo")
+function setSavedIndicator(saved, imported) {
+  $('#forgetData').hidden = !imported;
+  $('#source').dataset.tip = saved
+    ? `Salvo no navegador em ${new Date(saved).toLocaleString('pt-BR')}`
+    : 'Dados não salvos no navegador';
+}
 
 /* =========================================================
    Eventos
@@ -685,8 +728,17 @@ function readFile(file) {
   if (!file) return;
   if (!/\.(csv|txt)$/i.test(file.name) && !/csv|text/.test(file.type)) { toast('Selecione um arquivo .csv', 'error'); return; }
   const read = (enc) => new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsText(file, enc); });
-  read('utf-8').then((text) => (text.includes('�') ? read('windows-1252') : text)).then((text) => loadData(text, file.name));
+  read('utf-8').then((text) => (text.includes('�') ? read('windows-1252') : text)).then((text) => loadData(text, file.name, { persist: 'save' }));
 }
+
+$('#forgetData').addEventListener('click', () => {
+  if (!confirm(`Remover o arquivo importado "${state.source}" e os dados salvos no navegador?`)) return;
+  storage.remove(DATASET_KEY);
+  storage.remove(`goal:${state.source}`);
+  clearAll();
+  toast('Arquivo importado removido');
+  loadDefault();
+});
 $('#fileInput').addEventListener('change', (e) => { readFile(e.target.files[0]); e.target.value = ''; });
 
 const dz = $('#dropzone');
@@ -765,7 +817,16 @@ document.querySelectorAll('i[data-icon]').forEach((el) => {
   el.replaceWith(svg);
 });
 
-fetch('dados.csv')
-  .then((r) => { if (!r.ok) throw new Error(); return r.text(); })
-  .then((text) => loadData(text, 'dados.csv'))
-  .catch(() => loadData(SAMPLE, 'dados de exemplo'));
+function loadDefault() {
+  fetch('dados.csv')
+    .then((r) => { if (!r.ok) throw new Error(); return r.text(); })
+    .then((text) => loadData(text, 'dados.csv'))
+    .catch(() => loadData(SAMPLE, 'dados de exemplo'));
+}
+
+// Prioridade: último CSV importado (salvo no navegador) → dados.csv → exemplo
+const saved = loadSavedDataset();
+if (!saved || !loadData(saved.csv, saved.source, { persist: 'restored', savedAt: saved.savedAt })) {
+  if (saved) storage.remove(DATASET_KEY);
+  loadDefault();
+}
