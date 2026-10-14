@@ -277,25 +277,21 @@ function render() {
 }
 
 function animateNumber(el, to, fmt) {
-  const from = el._v ?? 0;
-  el._v = to;
-  odometer(el, fmt(to), to >= from ? 1 : -1);
+  odometer(el, fmt(to));
 }
 
-/* Odômetro: cada dígito é uma faixa 0–9 (repetida 3x) que rola até o novo valor.
-   Dígitos são alinhados pela direita, então unidades continuam no mesmo lugar
-   quando o número ganha ou perde casas. dir: 1 = sobe, -1 = desce. */
+/* Odômetro: cada dígito é uma faixa 0–9 (repetida 3x). A cada atualização
+   (carga ou filtro) todos os dígitos partem do zero e rolam até o novo valor;
+   as casas menos significativas dão uma volta a mais, como num odômetro real. */
 const ODO_CYCLES = 3;
 const ODO_STRIP = Array.from({ length: 10 * ODO_CYCLES }, (_, i) => `<span>${i % 10}</span>`).join('');
 
-function odometer(el, text, dir = 1) {
+function odometer(el, text) {
   el.setAttribute('aria-label', text);
-  if (reduceMotion) { el.textContent = text; el._digits = null; return; }
+  if (reduceMotion) { el.textContent = text; return; }
 
-  const oldDigits = el._digits || [];               // dígitos anteriores, da direita p/ esquerda
   const chars = [...text];
   const digitCount = chars.filter((c) => /\d/.test(c)).length;
-  el._digits = chars.filter((c) => /\d/.test(c)).map(Number).reverse();
   el.classList.add('odo');
 
   const frag = document.createDocumentFragment();
@@ -310,31 +306,17 @@ function odometer(el, text, dir = 1) {
       return;
     }
     fromRight--;
-    const next = Number(c);
-    const prev = oldDigits[fromRight] ?? 0;
     const col = document.createElement('span');
     col.className = 'odo-digit';
     col.innerHTML = `<span class="odo-strip">${ODO_STRIP}</span>`;
     frag.appendChild(col);
 
-    // Casas menos significativas dão uma volta extra, como num odômetro real
-    const changed = next !== prev || !el._ready;
-    const extra = changed && fromRight < 2 ? 1 : 0;
-    let start, end;
-    if (dir > 0) {
-      start = prev;
-      end = next + 10 * ((next < prev ? 1 : 0) + extra);
-      if (changed && end === start) end += 10;
-    } else {
-      start = prev + 20;
-      end = next + 20 - 10 * ((next > prev ? 1 : 0) + extra);
-      if (changed && end === start) end -= 10;
-    }
-    strips.push({ strip: col.firstChild, start, end, delay: (digitCount - 1 - fromRight) * 45 });
+    // Parte do 0 e dá 1 volta completa (2 nas duas últimas casas) antes de parar no dígito
+    const end = Number(c) + 10 * (fromRight < 2 ? 2 : 1);
+    strips.push({ strip: col.firstChild, start: 0, end, delay: (digitCount - 1 - fromRight) * 45 });
   });
 
   el.replaceChildren(frag);
-  el._ready = true;
   strips.forEach(({ strip, start }) => { strip.style.transition = 'none'; strip.style.setProperty('--n', start); });
   void el.offsetWidth; // fixa a posição inicial antes de animar
   strips.forEach(({ strip, end, delay }) => {
@@ -369,8 +351,8 @@ function renderKPIs(rows) {
   const tp = grand ? total / grand : 0, qp = grandQty ? qty / grandQty : 0;
   $('#kpiTotalBar').style.width = `${tp * 100}%`;
   $('#kpiQtyBar').style.width = `${qp * 100}%`;
-  $('#kpiTotalPct').textContent = `${fmtPct.format(tp)} do total`;
-  $('#kpiQtyPct').textContent = `${fmtPct.format(qp)} do total`;
+  odometer($('#kpiTotalPct'), `${fmtPct.format(tp)} do total`);
+  odometer($('#kpiQtyPct'), `${fmtPct.format(qp)} do total`);
 
   $('#kpiTicketDelta').innerHTML = hasFilters() && rows.length
     ? deltaHTML(ticket / grandTicket - 1, 'vs. média geral')

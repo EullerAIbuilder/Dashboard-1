@@ -242,7 +242,7 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 
 /* ===== Odômetro ===== */
 .odo { display: inline-flex; align-items: flex-end; font-variant-numeric: tabular-nums; line-height: 1.15; }
-.odo-sep { display: inline-block; height: 1.15em; }
+.odo-sep { display: inline-block; height: 1.15em; white-space: pre; }
 .odo-digit {
   display: inline-block; height: 1.15em; overflow: hidden; position: relative;
   -webkit-mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
