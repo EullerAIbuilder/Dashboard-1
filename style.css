@@ -26,6 +26,7 @@
 
   --radius: 18px;
   --ease: cubic-bezier(.22, 1, .36, 1);
+  --count: 1.37s; /* mesma duração da contagem dos números (COUNT_MS) */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -232,7 +233,7 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 .kpi-label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
 .kpi-share, .kpi-delta { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; font-size: 12px; font-weight: 600; color: var(--text-secondary); min-height: 18px; }
 .kpi-share .bar { width: 70px; height: 6px; border-radius: 6px; background: var(--track); overflow: hidden; }
-.kpi-share .bar span { display: block; height: 100%; width: 0; border-radius: 6px; background: var(--accent); transition: width .9s var(--ease); }
+.kpi-share .bar span { display: block; height: 100%; width: 0; border-radius: 6px; background: var(--accent); transition: width var(--count) var(--ease); }
 .up { color: var(--good); } .down { color: var(--bad); }
 
 .grid { display: grid; gap: 18px; margin-bottom: 18px; }
@@ -240,21 +241,8 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 .grid-2 { grid-template-columns: 1fr 1fr; }
 .chart-card { min-height: 360px; display: flex; flex-direction: column; }
 
-/* ===== Odômetro ===== */
-.odo { display: inline-flex; align-items: flex-end; font-variant-numeric: tabular-nums; line-height: 1.15; }
-.odo-sep { display: inline-block; height: 1.15em; white-space: pre; }
-.odo-digit {
-  display: inline-block; height: 1.15em; overflow: hidden; position: relative;
-  -webkit-mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
-  mask-image: linear-gradient(transparent, #000 8%, #000 92%, transparent);
-}
-.odo-strip {
-  display: flex; flex-direction: column; --n: 0;
-  transform: translateY(calc(var(--n) * -1.15em));
-  transition: transform 1.4s cubic-bezier(.16, 1, .3, 1);
-  will-change: transform;
-}
-.odo-strip span { display: block; height: 1.15em; text-align: center; }
+/* ===== Números animados (contagem 0 → valor) ===== */
+[data-fmt] { font-variant-numeric: tabular-nums; }
 
 /* ===== Gauge ===== */
 .gauge { position: relative; width: 100%; max-width: 280px; margin: 8px auto 0; }
@@ -263,7 +251,7 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 .gauge-track { stroke: var(--track); }
 .gauge-value {
   stroke: var(--accent); stroke-dasharray: 0 100;
-  transition: stroke-dasharray 1.2s var(--ease); filter: drop-shadow(0 4px 8px var(--accent-soft));
+  transition: stroke-dasharray var(--count) var(--ease); filter: drop-shadow(0 4px 8px var(--accent-soft));
 }
 .gauge-center { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; }
 .gauge-badge {
@@ -293,12 +281,12 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 }
 .col-fill {
   width: 100%; max-width: 30px; height: 0; border-radius: 4px 4px 0 0; background: var(--c);
-  transition: height .9s var(--ease), opacity .3s, filter .2s, transform .2s var(--ease); transform-origin: bottom;
+  transition: height var(--count) var(--ease), opacity .3s, filter .2s, transform .2s var(--ease); transform-origin: bottom;
 }
 .col:hover .col-fill, .col:focus-visible .col-fill { filter: brightness(1.08); transform: scaleX(1.12); }
 .col.dim .col-fill { opacity: .25; }
-.col-val { position: absolute; font-size: 11px; font-weight: 600; color: var(--text-secondary); transition: bottom .9s var(--ease), opacity .3s; white-space: nowrap; }
-.col-avg { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--text-muted); transition: bottom .9s var(--ease); pointer-events: none; opacity: .7; }
+.col-val { position: absolute; font-size: 11px; font-weight: 600; color: var(--text-secondary); transition: bottom var(--count) var(--ease), opacity .3s; white-space: nowrap; }
+.col-avg { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--text-muted); transition: bottom var(--count) var(--ease); pointer-events: none; opacity: .7; }
 .col-avg span { position: absolute; right: 0; top: -18px; font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--text-muted); }
 .col-labels { display: flex; justify-content: space-around; gap: 2px; margin-left: 52px; padding-top: 8px; }
 .col-labels span { flex: 1; max-width: 46px; text-align: center; font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -308,7 +296,7 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 .donut { width: 100%; display: block; transform: rotate(-90deg); overflow: visible; }
 .donut circle.seg {
   fill: none; stroke-width: 26; cursor: pointer; outline: none;
-  transition: stroke-dasharray .9s var(--ease), stroke-dashoffset .9s var(--ease), stroke-width .25s var(--ease), opacity .3s;
+  transition: stroke-dasharray var(--count) var(--ease), stroke-dashoffset var(--count) var(--ease), stroke-width .25s var(--ease), opacity .3s;
 }
 .donut circle.seg:hover, .donut circle.seg:focus-visible { stroke-width: 34; }
 .donut circle.seg.dim { opacity: .25; }
@@ -345,7 +333,7 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 .hbar:hover .avatar { transform: scale(1.12) rotate(-6deg); }
 .rank { width: 22px; flex: none; font-size: 12px; font-weight: 700; color: var(--text-muted); text-align: center; }
 .hbar-track { height: 10px; border-radius: 6px; background: var(--track); overflow: hidden; }
-.hbar-fill { display: block; height: 100%; width: 0; border-radius: 0 4px 4px 0; background: var(--c, var(--accent)); transition: width .9s var(--ease); }
+.hbar-fill { display: block; height: 100%; width: 0; border-radius: 0 4px 4px 0; background: var(--c, var(--accent)); transition: width var(--count) var(--ease); }
 .hbar-val { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; }
 
 /* ===== Table ===== */

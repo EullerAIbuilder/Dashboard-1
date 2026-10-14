@@ -197,7 +197,7 @@ function loadData(text, source, { persist, savedAt } = {}) {
   const grand = rows.reduce((s, r) => s + r.total, 0);
   state.goal = Number(storage.get(`goal:${source}`)) || niceStep(grand * 1.25);
 
-  $('#source span').textContent = `${source} · ${rows.length} linhas`;
+  $('#source span').innerHTML = `${esc(source)} · ${num(rows.length, 'int')} linhas`;
   $('#colChart').innerHTML = '';
   $('#productBars').innerHTML = '';
   $('#clientBars').innerHTML = '';
@@ -274,62 +274,64 @@ function render() {
   renderChips();
   renderTable(filtered);
   hideTooltip();
+  startCounters();
 }
 
-function animateNumber(el, to, fmt) {
-  odometer(el, fmt(to));
+/* =========================================================
+   Contagem: todo número vindo da planilha parte do 0 e chega
+   ao valor real em 1,37 s — ao abrir e a cada filtro aplicado.
+   Elementos marcados com data-count/data-fmt são animados por
+   um único laço requestAnimationFrame.
+   ========================================================= */
+const COUNT_MS = 1370;
+const FMT = {
+  money,
+  brl: (v) => fmtBRL.format(v),
+  int: (v) => fmtInt.format(Math.round(v)),
+  pct: (v) => fmtPct.format(v),
+  compact: (v) => fmtCompactNum.format(v),
+};
+const counters = new Map(); // elemento -> { to, fmt, t0 }
+let countRaf = 0;
+
+// HTML de um número animado (para trechos montados com innerHTML)
+const num = (v, fmt) => `<span data-count="${v}" data-fmt="${fmt}">${FMT[fmt](reduceMotion ? v : 0)}</span>`;
+
+// Marca um elemento existente para animar até o valor
+function countTo(el, v, fmt) {
+  el.dataset.count = v;
+  el.dataset.fmt = fmt;
 }
 
-/* Odômetro: cada dígito é uma faixa 0–9 (repetida 3x). A cada atualização
-   (carga ou filtro) todos os dígitos partem do zero e rolam até o novo valor;
-   as casas menos significativas dão uma volta a mais, como num odômetro real. */
-const ODO_CYCLES = 3;
-const ODO_STRIP = Array.from({ length: 10 * ODO_CYCLES }, (_, i) => `<span>${i % 10}</span>`).join('');
-
-function odometer(el, text) {
-  el.setAttribute('aria-label', text);
-  if (reduceMotion) { el.textContent = text; return; }
-
-  const chars = [...text];
-  const digitCount = chars.filter((c) => /\d/.test(c)).length;
-  el.classList.add('odo');
-
-  const frag = document.createDocumentFragment();
-  const strips = [];
-  let fromRight = digitCount;
-  chars.forEach((c) => {
-    if (!/\d/.test(c)) {
-      const s = document.createElement('span');
-      s.className = 'odo-sep';
-      s.textContent = c;
-      frag.appendChild(s);
-      return;
-    }
-    fromRight--;
-    const col = document.createElement('span');
-    col.className = 'odo-digit';
-    col.innerHTML = `<span class="odo-strip">${ODO_STRIP}</span>`;
-    frag.appendChild(col);
-
-    // Parte do 0 e dá 1 volta completa (2 nas duas últimas casas) antes de parar no dígito
-    const end = Number(c) + 10 * (fromRight < 2 ? 2 : 1);
-    strips.push({ strip: col.firstChild, start: 0, end, delay: (digitCount - 1 - fromRight) * 45 });
+// Registra todos os números marcados e (re)inicia a contagem do zero
+function startCounters() {
+  const t0 = performance.now();
+  document.querySelectorAll('[data-count]').forEach((el) => {
+    const to = Number(el.dataset.count);
+    const fmt = FMT[el.dataset.fmt] || FMT.brl;
+    el.removeAttribute('data-count');
+    el.setAttribute('aria-label', fmt(to));
+    if (reduceMotion) { el.textContent = fmt(to); return; }
+    el.textContent = fmt(0);
+    counters.set(el, { to, fmt, t0 });
   });
+  if (counters.size && !countRaf) countRaf = requestAnimationFrame(stepCounters);
+}
 
-  el.replaceChildren(frag);
-  strips.forEach(({ strip, start }) => { strip.style.transition = 'none'; strip.style.setProperty('--n', start); });
-  void el.offsetWidth; // fixa a posição inicial antes de animar
-  strips.forEach(({ strip, end, delay }) => {
-    strip.style.transition = '';
-    strip.style.transitionDelay = `${delay}ms`;
-    strip.style.setProperty('--n', end);
+function stepCounters(now) {
+  counters.forEach(({ to, fmt, t0 }, el) => {
+    const p = Math.min(1, Math.max(0, (now - t0) / COUNT_MS));
+    const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    el.textContent = fmt(to * e);
+    if (p >= 1 || !el.isConnected) counters.delete(el);
   });
+  countRaf = counters.size ? requestAnimationFrame(stepCounters) : 0;
 }
 
 function deltaHTML(ratio, suffix) {
   if (!Number.isFinite(ratio) || Math.abs(ratio) < 0.0005) return `<span class="muted">${suffix}</span>`;
   const up = ratio > 0;
-  return `<span class="${up ? 'up' : 'down'}" style="display:inline-flex;align-items:center;gap:3px">${icon(up ? 'arrowUp' : 'arrowDown')}${fmtPct.format(Math.abs(ratio))}</span><span class="muted">${suffix}</span>`;
+  return `<span class="${up ? 'up' : 'down'}" style="display:inline-flex;align-items:center;gap:3px">${icon(up ? 'arrowUp' : 'arrowDown')}${num(Math.abs(ratio), 'pct')}</span><span class="muted">${suffix}</span>`;
 }
 
 function renderKPIs(rows) {
@@ -343,21 +345,21 @@ function renderKPIs(rows) {
   const clients = new Set(rows.map((r) => r.nome)).size;
   const grandClients = new Set(all.map((r) => r.nome)).size;
 
-  animateNumber($('#kpiTotal'), total, money);
-  animateNumber($('#kpiQty'), qty, (v) => fmtInt.format(v));
-  animateNumber($('#kpiTicket'), ticket, money);
-  animateNumber($('#kpiClients'), clients, (v) => fmtInt.format(v));
+  countTo($('#kpiTotal'), total, 'money');
+  countTo($('#kpiQty'), qty, 'int');
+  countTo($('#kpiTicket'), ticket, 'money');
+  countTo($('#kpiClients'), clients, 'int');
 
   const tp = grand ? total / grand : 0, qp = grandQty ? qty / grandQty : 0;
   $('#kpiTotalBar').style.width = `${tp * 100}%`;
   $('#kpiQtyBar').style.width = `${qp * 100}%`;
-  odometer($('#kpiTotalPct'), `${fmtPct.format(tp)} do total`);
-  odometer($('#kpiQtyPct'), `${fmtPct.format(qp)} do total`);
+  $('#kpiTotalPct').innerHTML = `${num(tp, 'pct')} do total`;
+  $('#kpiQtyPct').innerHTML = `${num(qp, 'pct')} do total`;
 
   $('#kpiTicketDelta').innerHTML = hasFilters() && rows.length
     ? deltaHTML(ticket / grandTicket - 1, 'vs. média geral')
     : '<span class="muted">Média geral por venda</span>';
-  $('#kpiClientsDelta').innerHTML = `<span class="muted">de ${fmtInt.format(grandClients)} clientes no total</span>`;
+  $('#kpiClientsDelta').innerHTML = `<span class="muted">de ${num(grandClients, 'int')} clientes no total</span>`;
 }
 
 function renderGauge(rows) {
@@ -366,11 +368,11 @@ function renderGauge(rows) {
   const arc = $('#gaugeArc');
   arc.style.strokeDasharray = `${Math.min(pct, 1) * 100} 100`;
   arc.style.stroke = pct >= 1 ? 'var(--good)' : 'var(--accent)';
-  animateNumber($('#gaugeValue'), pct, (v) => fmtPct.format(v));
+  countTo($('#gaugeValue'), pct, 'pct');
   const rest = state.goal - total;
   $('#gaugeCaption').innerHTML = rest > 0
-    ? `Você está em <strong>${fmtPct.format(pct)}</strong> da meta de <strong>${money(state.goal)}</strong><br><span class="muted">Faltam ${money(rest)}</span>`
-    : `<span class="up" style="display:inline-flex;align-items:center;gap:4px">${icon('check')} Meta superada</span> em <strong>${money(-rest)}</strong><br><span class="muted">Meta: ${money(state.goal)}</span>`;
+    ? `Você está em <strong>${num(pct, 'pct')}</strong> da meta de <strong>${num(state.goal, 'money')}</strong><br><span class="muted">Faltam ${num(rest, 'money')}</span>`
+    : `<span class="up" style="display:inline-flex;align-items:center;gap:4px">${icon('check')} Meta superada</span> em <strong>${num(-rest, 'money')}</strong><br><span class="muted">Meta: ${num(state.goal, 'money')}</span>`;
 }
 
 function niceStep(v) {
@@ -442,7 +444,8 @@ function renderColumns() {
     if (!fill.style.height) void fill.offsetHeight;
     requestAnimationFrame(() => { fill.style.height = `${h}%`; });
     lab.style.bottom = `calc(${h}% + 6px)`;
-    lab.textContent = v ? fmtCompactNum.format(v) : '';
+    if (v) countTo(lab, v, 'compact');
+    else lab.textContent = '';
     col.classList.toggle('dim', isDim('categoria', c));
     const o = m.get(c);
     col.dataset.tip = tipHTML(c, state.catColor.get(c), [
@@ -499,7 +502,7 @@ function renderDonut() {
     li.setAttribute('role', 'button');
     li.style.setProperty('--c', b.color);
     li.classList.toggle('dim', isDim('faixa', b.key));
-    li.innerHTML = `<span class="sw"></span><span>${esc(b.key)}</span><span class="lv">${money(v)}</span><span class="lp">${fmtPct.format(total ? v / total : 0)}</span>`;
+    li.innerHTML = `<span class="sw"></span><span>${esc(b.key)}</span><span class="lv">${num(v, 'money')}</span><span class="lp">${num(total ? v / total : 0, 'pct')}</span>`;
     li.addEventListener('mouseenter', () => setDonutCenter(b.key));
     li.addEventListener('mouseleave', () => setDonutCenter(null));
     legend.appendChild(li);
@@ -511,12 +514,14 @@ function setDonutCenter(key) {
   const svg = $('#donut');
   const m = svg._m || new Map();
   if (key) {
-    animateNumber($('#donutValue'), m.get(key)?.total || 0, money);
+    countTo($('#donutValue'), m.get(key)?.total || 0, 'money');
+    startCounters();
     $('#donutLabel').textContent = key;
   } else {
     const sel = state.filters.faixa;
     const v = sel.size ? [...sel].reduce((s, k) => s + (m.get(k)?.total || 0), 0) : svg._total || 0;
-    animateNumber($('#donutValue'), v, money);
+    countTo($('#donutValue'), v, 'money');
+    startCounters();
     $('#donutLabel').textContent = sel.size ? 'Selecionado' : 'Total';
   }
 }
@@ -559,7 +564,7 @@ function renderHBars(host, dim, limit) {
     if (host.children[i] !== node) host.insertBefore(node, host.children[i] || null);
     const rank = node.querySelector('.rank');
     if (rank) rank.textContent = `#${i + 1}`;
-    node.querySelector('.hbar-val').textContent = fmtBRL.format(it.total);
+    countTo(node.querySelector('.hbar-val'), it.total, 'brl');
     node.classList.toggle('dim', isDim(dim, it.k));
     const fill = node.querySelector('.hbar-fill');
     const w = `${(it.total / max) * 100}%`;
@@ -609,6 +614,10 @@ function renderChips() {
   $('#clearAll').disabled = !hasFilters();
 }
 
+// Anima só as primeiras linhas visíveis; o resto já nasce com o valor final (CSV grandes)
+const TABLE_ANIM_ROWS = 200;
+const cell = (v, fmt, i) => (i < TABLE_ANIM_ROWS ? num(v, fmt) : FMT[fmt](v));
+
 function renderTable(rows) {
   const { key, dir } = state.sort;
   const sorted = [...rows].sort((a, b) => {
@@ -624,12 +633,12 @@ function renderTable(rows) {
         <td>${esc(r.nome)}</td>
         <td><span class="cat-tag" style="--c:${state.catColor.get(r.categoria)}">${esc(r.categoria)}</span></td>
         <td>${esc(r.produto)}</td>
-        <td class="num">${fmtBRL.format(r.valor)}</td>
-        <td class="num">${fmtInt.format(r.quantidade)}</td>
-        <td class="num"><strong>${fmtBRL.format(r.total)}</strong></td>
+        <td class="num">${cell(r.valor, 'brl', i)}</td>
+        <td class="num">${cell(r.quantidade, 'int', i)}</td>
+        <td class="num"><strong>${cell(r.total, 'brl', i)}</strong></td>
       </tr>`).join('')
     : '<tr class="empty-row"><td colspan="6">Nenhum registro corresponde aos filtros</td></tr>';
-  $('#tableCount').textContent = `${rows.length} de ${state.rows.length} registros`;
+  $('#tableCount').innerHTML = `${num(rows.length, 'int')} de ${num(state.rows.length, 'int')} registros`;
 }
 
 /* =========================================================
