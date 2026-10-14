@@ -279,16 +279,69 @@ function render() {
 function animateNumber(el, to, fmt) {
   const from = el._v ?? 0;
   el._v = to;
-  cancelAnimationFrame(el._raf);
-  if (reduceMotion) { el.textContent = fmt(to); return; }
-  const t0 = performance.now(), dur = 900;
-  const step = (now) => {
-    const p = Math.min(1, (now - t0) / dur);
-    const e = 1 - Math.pow(1 - p, 4);
-    el.textContent = fmt(from + (to - from) * e);
-    if (p < 1) el._raf = requestAnimationFrame(step);
-  };
-  el._raf = requestAnimationFrame(step);
+  odometer(el, fmt(to), to >= from ? 1 : -1);
+}
+
+/* Odômetro: cada dígito é uma faixa 0–9 (repetida 3x) que rola até o novo valor.
+   Dígitos são alinhados pela direita, então unidades continuam no mesmo lugar
+   quando o número ganha ou perde casas. dir: 1 = sobe, -1 = desce. */
+const ODO_CYCLES = 3;
+const ODO_STRIP = Array.from({ length: 10 * ODO_CYCLES }, (_, i) => `<span>${i % 10}</span>`).join('');
+
+function odometer(el, text, dir = 1) {
+  el.setAttribute('aria-label', text);
+  if (reduceMotion) { el.textContent = text; el._digits = null; return; }
+
+  const oldDigits = el._digits || [];               // dígitos anteriores, da direita p/ esquerda
+  const chars = [...text];
+  const digitCount = chars.filter((c) => /\d/.test(c)).length;
+  el._digits = chars.filter((c) => /\d/.test(c)).map(Number).reverse();
+  el.classList.add('odo');
+
+  const frag = document.createDocumentFragment();
+  const strips = [];
+  let fromRight = digitCount;
+  chars.forEach((c) => {
+    if (!/\d/.test(c)) {
+      const s = document.createElement('span');
+      s.className = 'odo-sep';
+      s.textContent = c;
+      frag.appendChild(s);
+      return;
+    }
+    fromRight--;
+    const next = Number(c);
+    const prev = oldDigits[fromRight] ?? 0;
+    const col = document.createElement('span');
+    col.className = 'odo-digit';
+    col.innerHTML = `<span class="odo-strip">${ODO_STRIP}</span>`;
+    frag.appendChild(col);
+
+    // Casas menos significativas dão uma volta extra, como num odômetro real
+    const changed = next !== prev || !el._ready;
+    const extra = changed && fromRight < 2 ? 1 : 0;
+    let start, end;
+    if (dir > 0) {
+      start = prev;
+      end = next + 10 * ((next < prev ? 1 : 0) + extra);
+      if (changed && end === start) end += 10;
+    } else {
+      start = prev + 20;
+      end = next + 20 - 10 * ((next > prev ? 1 : 0) + extra);
+      if (changed && end === start) end -= 10;
+    }
+    strips.push({ strip: col.firstChild, start, end, delay: (digitCount - 1 - fromRight) * 45 });
+  });
+
+  el.replaceChildren(frag);
+  el._ready = true;
+  strips.forEach(({ strip, start }) => { strip.style.transition = 'none'; strip.style.setProperty('--n', start); });
+  void el.offsetWidth; // fixa a posição inicial antes de animar
+  strips.forEach(({ strip, end, delay }) => {
+    strip.style.transition = '';
+    strip.style.transitionDelay = `${delay}ms`;
+    strip.style.setProperty('--n', end);
+  });
 }
 
 function deltaHTML(ratio, suffix) {
@@ -476,12 +529,12 @@ function setDonutCenter(key) {
   const svg = $('#donut');
   const m = svg._m || new Map();
   if (key) {
-    $('#donutValue').textContent = money(m.get(key)?.total || 0);
+    animateNumber($('#donutValue'), m.get(key)?.total || 0, money);
     $('#donutLabel').textContent = key;
   } else {
     const sel = state.filters.faixa;
     const v = sel.size ? [...sel].reduce((s, k) => s + (m.get(k)?.total || 0), 0) : svg._total || 0;
-    $('#donutValue').textContent = money(v);
+    animateNumber($('#donutValue'), v, money);
     $('#donutLabel').textContent = sel.size ? 'Selecionado' : 'Total';
   }
 }
