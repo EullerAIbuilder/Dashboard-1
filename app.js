@@ -95,7 +95,9 @@ const state = {
 };
 
 const $ = (s) => document.querySelector(s);
-const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Só afeta enfeites (rolagem suave, reordenação). Contagens e transições dos gráficos
+// rodam sempre: são parte da leitura do painel e foram pedidas explicitamente.
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* =========================================================
    Formatação
@@ -295,7 +297,7 @@ const counters = new Map(); // elemento -> { to, fmt, t0 }
 let countRaf = 0;
 
 // HTML de um número animado (para trechos montados com innerHTML)
-const num = (v, fmt) => `<span data-count="${v}" data-fmt="${fmt}">${FMT[fmt](reduceMotion ? v : 0)}</span>`;
+const num = (v, fmt) => `<span data-count="${v}" data-fmt="${fmt}">${FMT[fmt](0)}</span>`;
 
 // Marca um elemento existente para animar até o valor
 function countTo(el, v, fmt) {
@@ -311,7 +313,6 @@ function startCounters() {
     const fmt = FMT[el.dataset.fmt] || FMT.brl;
     el.removeAttribute('data-count');
     el.setAttribute('aria-label', fmt(to));
-    if (reduceMotion) { el.textContent = fmt(to); return; }
     el.textContent = fmt(0);
     counters.set(el, { to, fmt, t0 });
   });
@@ -584,7 +585,7 @@ function renderHBars(host, dim, limit) {
   existing.forEach((node, k) => { if (!keep.has(k)) node.remove(); });
 
   // FLIP: anima a reordenação das barras
-  if (!reduceMotion) {
+  {
     [...host.children].forEach((node) => {
       const prev = before.get(node.dataset.val);
       if (prev == null) return;

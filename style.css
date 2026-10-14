@@ -405,8 +405,10 @@ tbody tr:hover { background: var(--surface-2); }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 8px transparent; } }
 
+/* Movimento reduzido no sistema: desliga só as animações decorativas em loop.
+   Contagem dos números e transições dos gráficos continuam ativas. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .logo, .gauge-badge, .dz-icon { animation: none; }
 }
 
 /* ===== Responsive ===== */
